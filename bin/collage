@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+import argparse
+from pathlib import Path
+import random
+import math
+from typing import List
+
+import numpy as np
+from PIL import Image
+
+parser = argparse.ArgumentParser()
+_group = parser.add_mutually_exclusive_group(required=True)
+_group.add_argument('-f', '--folder', help='path to folder with images')
+_group.add_argument('-i', '--images', nargs='+', help='image file paths')
+parser.add_argument('-o', '--out', help='output file path', default='collage.jpg')
+parser.add_argument('-y', '--override', action='store_true', help="if set, it will override the output file")
+parser.add_argument('-q', '--jpeg-quality', type=int, default=75, help="jpeg quality [1-100]")
+
+parser.add_argument('-t', '--file-types', default='jpg/jpeg/png')
+parser.add_argument('-a', '--aspect-ratio', type=float,
+                    help='aspect ratio of images in collage (width/height). '
+                         'if not defined, it will be chosen from the first image')
+parser.add_argument('--fill', action='store_true',
+                    help='fill the available area instead of fitting the whole image')
+parser.add_argument('--interpolation', default='auto',
+                    choices=['auto', 'nearest', 'bilinear', 'bicubic', 'lanczos'])
+
+parser.add_argument('-n', '--n', type=int, help='limit the amount of pictures to include')
+
+parser.add_argument('--no-sort', action='store_true', help="don't sort images by path")
+parser.add_argument('--shuffle', action='store_true', help="shuffle image order")
+
+_group = parser.add_mutually_exclusive_group(required=False)
+_group.add_argument('-w', '--width', type=int, help="approx width of collage in px")
+_group.add_argument('-H', '--height', type=int, help="approx height of collage in px")
+
+parser.add_argument('-r', '--rows', type=int, help="number of rows in collage")
+parser.add_argument('-c', '--columns', type=int, help="number of columns in collage")
+
+parser.add_argument('-bs', '--border-size', type=int, default=2, help='border size in px')
+parser.add_argument('-bsa', '--border-size-around', type=int, default=0, help='border around collage in px')
+parser.add_argument('-bc', '--border-color', nargs='+', type=int, default=[0, 0, 0, 0], help="rgba color [0-255]")
+
+args = parser.parse_args()
+
+out_path = Path(args.out)
+assert args.override or not out_path.exists(), "output already exists. set --override to override."
+assert 1 <= args.jpeg_quality <= 100
+
+file_types = args.file_types.split('/')
+if args.folder:
+    files = [f for f in Path(args.folder).glob('*') if str(f).split('.')[-1] in file_types]
+else:
+    files = [Path(f) for f in args.images]
+assert files, "no image files found"
+
+if args.shuffle:
+    random.shuffle(files)
+elif not args.no_sort:
+    files.sort()
+
+n = args.n or len(files)
+files = files[:n]
+
+rows, cols = args.rows, args.columns
+if rows and not cols:
+    cols = math.ceil(n / rows)
+elif cols and not rows:
+    rows = math.ceil(n / cols)
+elif not cols and not rows:
+    cols = math.ceil(math.sqrt(n))
+    rows = math.ceil(n / cols)
+assert cols * rows >= n, "not enough rows and columns to include all images"
+
+first_img = np.array(Image.open(files[0]))
+aspect_ratio = args.aspect_ratio
+if not aspect_ratio:
+    aspect_ratio = first_img.shape[1] / first_img.shape[0]
+
+border_size = args.border_size
+assert 0 <= border_size
+border_size_around = args.border_size_around
+assert 0 <= border_size_around
+
+
+def get_color_arg(inp: List[int]):
+    if len(inp) == 1:
+        inp = inp * 3
+    if len(inp) == 3:
+        inp.append(255)
+    assert len(inp) == 4
+    inp = np.array(inp)
+    assert np.all(0 <= inp) and np.all(inp <= 255), 'color range [0-255]'
+    return inp
+
+
+border_color = get_color_arg(args.border_color)
+
+border_total_w = (cols - 1) * border_size + 2 * border_size_around
+border_total_h = (rows - 1) * border_size + 2 * border_size_around
+
+collage_h, collage_w = args.height, args.width
+# mutually exclusive
+if collage_h:
+    img_h = round((collage_h - border_total_h) / rows)
+    img_w = round(img_h * aspect_ratio)
+elif collage_w:
+    img_w = round((collage_w - border_total_w) / cols)
+    img_h = round(img_w / aspect_ratio)
+else:
+    img_h = first_img.shape[0]
+    img_w = round(img_h * aspect_ratio)
+collage_h = img_h * rows + border_total_h
+collage_w = img_w * cols + border_total_w
+
+collage = np.empty((collage_h, collage_w, 4), dtype=np.uint8)
+collage[:, :, :] = border_color
+
+
+def minmax(*inp):
+    return min(*inp), max(*inp)
+
+
+for row in range(rows):
+    for col in range(cols):
+        i = row * cols + col
+        if i >= n:
+            break
+        img = Image.open(files[i])
+        h, w = img.height, img.width
+        ar = w / h
+        rmi, rma = minmax(img_h / h, img_w / w)
+        scale = rma if args.fill else rmi
+        _h, _w = round(scale * h), round(scale * w)
+        inter = args.interpolation
+        if inter == 'auto':
+            if _h < img_h:
+                inter = 'lanczos'
+            else:
+                inter = 'bicubic'
+        img = img.resize((_w, _h), resample=getattr(Image, inter.upper()))
+        img = np.array(img)
+        # crop image (fill)
+        if _h > img_h:
+            h_start = (_h - img_h) // 2
+            img = img[h_start:h_start + img_h]
+            _h = img_h
+        if _w > img_w:
+            w_start = (_w - img_w) // 2
+            img = img[:, w_start:w_start + img_w]
+            _w = img_w
+        # define offsets (fit)
+        off_h = (img_h - _h) // 2
+        off_w = (img_w - _w) // 2
+        # insert image in collage
+        x = border_size_around + col * (border_size + img_w) + off_w
+        y = border_size_around + row * (border_size + img_h) + off_h
+        if img.shape[2] == 1:
+            img = np.tile(img, (1, 1, 3))
+        if img.shape[2] == 3:
+            img = np.concatenate((img, np.ones((_h, _w, 1), dtype=np.uint8) * 255), axis=2)
+        assert img.shape[2] == 4
+        collage[y:y + _h, x:x + _w] = img
+
+
+# https://web.archive.org/web/20111010015624/http://blogmag.net/blog/read/38/Print_human_readable_file_size
+def sizeof_fmt(num, suffix='B'):
+    for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
+        if abs(num) < 1024.0:
+            return "%3.1f%s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f%s%s" % (num, 'Yi', suffix)
+
+
+if not out_path.name[-3:].lower() == 'png':
+    collage = collage[:, :, :3]
+Image.fromarray(collage).save(out_path, quality=args.jpeg_quality)
+print("saved {}, {}, {}".format(out_path, collage.shape, sizeof_fmt(out_path.stat().st_size)))
