@@ -3,9 +3,7 @@ python module to make image grids
 
 #### install
 ```
-$ git clone https://github.com/RasmusHaugaard/image-grids.git
-$ cd image-grid
-$ pip install -e .
+$ pip install image-grid
 ```
 Installing the module registers a script `image-grid` which can be run from any folder.
 #### usage
