@@ -1,2 +1,5 @@
 .idea
-collage.egg-info
+image_grid.egg-info
+dist
+build
+**/__pycache__

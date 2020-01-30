@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+import argparse
+from pathlib import Path
+
+from PIL import Image
+
+import image_grid
+
+parser = argparse.ArgumentParser()
+_group = parser.add_mutually_exclusive_group(required=True)
+_group.add_argument('-f', '--folder', help='path to folder with images')
+_group.add_argument('-i', '--images', nargs='+', help='image file paths')
+parser.add_argument('-o', '--out', help='output file path', default='image-grid.jpg')
+parser.add_argument('-y', '--override', action='store_true', help="if set, it will override the output file")
+parser.add_argument('-q', '--jpeg-quality', type=int, default=75, help="jpeg quality [1-100]")
+
+parser.add_argument('-t', '--file-types', default='jpg/jpeg/png')
+parser.add_argument('-a', '--aspect-ratio', type=float,
+                    help='aspect ratio of grid cells (width/height). '
+                         'if not defined, it will be chosen from the first image')
+parser.add_argument('--fill', action='store_true',
+                    help='fill the grid cell instead of fitting the whole image in the cell')
+parser.add_argument('--interpolation', default='auto',
+                    choices=image_grid.Interpolation.ALL)
+
+parser.add_argument('-n', '--n', type=int, help='limit the amount of pictures to include')
+
+parser.add_argument('--no-sort', action='store_true', help="don't sort images by path")
+parser.add_argument('--shuffle', action='store_true', help="shuffle image order")
+
+_group = parser.add_mutually_exclusive_group(required=False)
+_group.add_argument('-w', '--width', type=int, help="approx width of image grid in px")
+_group.add_argument('-H', '--height', type=int, help="approx height of image grid in px")
+
+parser.add_argument('-r', '--rows', type=int, help="number of rows in image grid")
+parser.add_argument('-c', '--columns', type=int, help="number of columns in image grid")
+
+parser.add_argument('-bs', '--border-size', type=int, default=2, help='border size in px')
+parser.add_argument('-bsa', '--border-size-around', type=int, default=0, help='border around image grid in px')
+parser.add_argument('-bc', '--border-color', nargs='+', type=int, default=[0, 0, 0, 0], help="rgba color [0-255]")
+
+args = parser.parse_args()
+
+out_path = Path(args.out)
+assert args.override or not out_path.exists(), "output already exists and override is set to false"
+assert 1 <= args.jpeg_quality <= 100
+
+if args.folder:
+    img_getters = image_grid.image_getters_from_folder(args.folder, args.file_types.split('/'))
+else:
+    img_getters = image_grid.image_getters_from_img_paths(args.images)
+assert img_getters, "no image files found"
+
+img_grid = image_grid.image_grid(img_getters, sort=not args.no_sort, shuffle=args.shuffle, n=args.n,
+                                 aspect_ratio=args.aspect_ratio, rows=args.rows, columns=args.columns,
+                                 width=args.width, height=args.height, fill=args.fill,
+                                 interpolation=args.interpolation, border_size=args.border_size,
+                                 border_size_around=args.border_size_around, border_color=args.border_color)
+
+if not out_path.name[-3:].lower() == 'png':
+    img_grid = img_grid[:, :, :3]
+Image.fromarray(img_grid).save(out_path, quality=args.jpeg_quality)
+
+
+# https://web.archive.org/web/20111010015624/http://blogmag.net/blog/read/38/Print_human_readable_file_size
+def sizeof_fmt(num, suffix='B'):
+    for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
+        if abs(num) < 1024.0:
+            return "%3.1f%s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f%s%s" % (num, 'Yi', suffix)
+
+
+print("saved {}, {}, {}".format(out_path, img_grid.shape, sizeof_fmt(out_path.stat().st_size)))
