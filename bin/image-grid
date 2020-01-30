@@ -51,7 +51,7 @@ else:
     img_getters = image_grid.image_getters_from_img_paths(args.images)
 assert img_getters, "no image files found"
 
-img_grid = image_grid.image_grid(img_getters, sort=not args.no_sort, shuffle=args.shuffle, n=args.n,
+img_grid = image_grid.image_grid(img_getters, sort=not (args.no_sort or args.shuffle), shuffle=args.shuffle, n=args.n,
                                  aspect_ratio=args.aspect_ratio, rows=args.rows, columns=args.columns,
                                  width=args.width, height=args.height, fill=args.fill,
                                  interpolation=args.interpolation, border_size=args.border_size,

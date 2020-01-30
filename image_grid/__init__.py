@@ -23,7 +23,6 @@ class Interpolation:
 
 def image_getters_from_img_paths(img_paths: Iterable[P]) -> List[ImageGetter]:
     img_getters = [(fp, partial(Image.open, fp)) for fp in img_paths]
-    print(img_getters)
     return img_getters
 
 
