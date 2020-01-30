@@ -1,11 +1,11 @@
-from setuptools import setup
+import setuptools
 
 with open("readme.md") as f:
     long_description = f.read()
 
-setup(
+setuptools.setup(
     name='image-grid',
-    version='0.0.2',
+    version='0.0.3',
     author='Rasmus Laurvig Haugaard',
     author_email='rasmus.l.haugaard@gmail.com',
     description='assembles images in a grid',
@@ -15,6 +15,7 @@ setup(
     scripts=[
         'bin/image-grid',
     ],
+    packages=setuptools.find_packages(),
     install_requires=[
         'numpy',
         'Pillow',
