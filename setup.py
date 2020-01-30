@@ -5,7 +5,7 @@ with open("readme.md") as f:
 
 setup(
     name='image-grid',
-    version='0.0.1',
+    version='0.0.2',
     author='Rasmus Laurvig Haugaard',
     author_email='rasmus.l.haugaard@gmail.com',
     description='assembles images in a grid',
